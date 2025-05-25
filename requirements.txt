@@ -3,3 +3,39 @@ pydantic
 requests
 python-dotenv
 PySide6
+lmstudio
+
+# Google Cloud Platform libraries
+google-cloud-storage>=2.10.0
+google-cloud-bigquery>=3.11.0
+google-auth>=2.22.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+
+# Additional Google Cloud services (optional but commonly used)
+google-cloud-pubsub>=2.18.0
+google-cloud-firestore>=2.11.0
+google-cloud-compute>=1.11.0
+google-cloud-logging>=3.5.0
+
+# Data manipulation and processing
+pandas>=2.0.0
+numpy<2
+db-dtypes>=1.0.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Additional useful libraries for Jupyter notebooks
+jupyter>=1.0.0
+notebook>=7.0.0
+ipykernel>=6.25.0
+
+# HTTP and API utilities (often needed with Google Cloud)
+requests>=2.31.0
+urllib3>=2.0.0
+
+# For handling credentials and environment variables
+python-dotenv>=1.0.0
+
+xlsxwriter
