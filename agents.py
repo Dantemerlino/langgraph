@@ -1,94 +1,161 @@
 from states import UserInputState, QuestionState, DataState, AnswerState
 from bigquery_tools import execute_sql_query, get_table_schema, list_tables # Import BQ tools
-from typing import List # For type hinting
+from typing import List, Any # For type hinting
+import re # For keyword extraction
 
 def generate_questions_agent(state: UserInputState) -> QuestionState:
     """
-    Generates questions based on user input.
-    Placeholder implementation.
+    Generates questions based on user input using simple keyword matching.
     """
-    # For now, return a static list of questions
-    return QuestionState(questions=["What is the capital of France?", "How does photosynthesis work?"])
+    print(f"DEBUG: generate_questions_agent received input: {state.user_input}")
+    user_input_lower = state.user_input.lower()
+    questions = []
+
+    if "capital" in user_input_lower:
+        if "france" in user_input_lower:
+            questions.append("What is the capital of France?")
+        else:
+            questions.append("What are some known capitals?")
+    
+    if "schema" in user_input_lower:
+        if "customer" in user_input_lower:
+            questions.append("What is the schema of the customer_details table?")
+        elif "order" in user_input_lower:
+            questions.append("What is the schema of the order_summary table?")
+        else:
+            questions.append("Can you list schemas for available tables?")
+
+    if "how does" in user_input_lower and "work" in user_input_lower:
+        # Find the topic between "how does" and "work"
+        match = re.search(r"how does (.*) work", user_input_lower)
+        if match and match.group(1):
+            questions.append(f"How does {match.group(1).strip()} work?")
+        else:
+            questions.append("Explain a general concept.")
+
+
+    if "order" in user_input_lower and "what" in user_input_lower: # e.g. "what are the orders"
+        questions.append("Show me some recent orders.")
+    
+    if "customer" in user_input_lower and ("who" in user_input_lower or "details" in user_input_lower) :
+         questions.append("Show me some customer details.")
+
+    if not questions: # Default question if no keywords match
+        questions.append(f"Can you provide general information about: {state.user_input}?")
+    
+    # Limit to 2 questions for simplicity
+    final_questions = questions[:2]
+    print(f"DEBUG: generate_questions_agent produced questions: {final_questions}")
+    return QuestionState(questions=final_questions)
 
 def retrieve_data_agent(state: QuestionState) -> DataState:
     """
     Retrieves data based on the generated questions.
-    Placeholder implementation.
+    Uses updated bigquery_tools.py for more dynamic simulation.
+    `can_answer` is true if any simulated query returns a non-empty result.
     """
-    # Get "available" tables and schema for the first table (simulation)
-    simulated_tables_response = list_tables()
-    simulated_tables: List[str] = simulated_tables_response.get('tables', [])
-
-    if not simulated_tables:
-        # No tables found, cannot answer
-        return DataState(retrieved_data="No tables found in the simulated BigQuery environment.", can_answer=False)
-
-    # For simplicity, use the first table for schema checks and queries
-    # In a real scenario, logic would be more complex to choose the right table.
-    primary_table_for_simulation = simulated_tables[0]
-    simulated_schema_response = get_table_schema(primary_table_for_simulation)
-    simulated_schema: dict = simulated_schema_response.get('schema', {})
-    simulated_schema_columns: List[str] = list(simulated_schema.keys())
-
+    print(f"DEBUG: retrieve_data_agent received questions: {state.questions}")
+    
     retrieved_data_for_all_questions = []
-    any_question_answerable = False
+    any_question_answered_with_data = False
+
+    # Get simulated table list to help form more "realistic" simulated queries
+    available_tables = list_tables().get("tables", [])
 
     for q_text in state.questions:
-        q_text_lower = q_text.lower() # For case-insensitive matching
-        question_seems_answerable = False
+        q_text_lower = q_text.lower()
+        # Attempt to make a slightly more relevant simulated query
+        # This is still very basic and for simulation purposes.
+        simulated_query = f"SELECT * FROM placeholder_table WHERE content CONTAINS '{q_text_lower[:30]}...'" # Default query
+        
+        # Try to pick a table based on question keywords
+        if "capital" in q_text_lower and "capitals_data" in available_tables:
+            simulated_query = f"SELECT * FROM capitals_data WHERE question_hint = '{q_text_lower}'"
+        elif "schema" in q_text_lower and "schema_info" in available_tables:
+            if "customer" in q_text_lower:
+                 simulated_query = f"SELECT columns FROM schema_info WHERE table_name = 'customer_details'"
+            elif "order" in q_text_lower:
+                 simulated_query = f"SELECT columns FROM schema_info WHERE table_name = 'order_summary'"
+            else:
+                simulated_query = f"SELECT * FROM schema_info"
+        elif ("order" in q_text_lower or "orders" in q_text_lower) and "order_summary" in available_tables:
+            simulated_query = f"SELECT * FROM order_summary LIMIT 2"
+        elif ("customer" in q_text_lower or "customers" in q_text_lower) and "customer_details" in available_tables:
+            simulated_query = f"SELECT * FROM customer_details LIMIT 2"
 
-        # Simple check: does the question mention a known table name (case-insensitive)?
-        if any(table.lower() in q_text_lower for table in simulated_tables):
-            question_seems_answerable = True
+        print(f"DEBUG: retrieve_data_agent attempting simulated query: '{simulated_query}' for question: '{q_text}'")
+        query_result_dict = execute_sql_query(simulated_query)
+        actual_data_from_query = query_result_dict.get("result", [])
         
-        # Simple check: does the question mention a known column name (case-insensitive)?
-        if not question_seems_answerable: # only check columns if table check failed
-            if any(col.lower() in q_text_lower for col in simulated_schema_columns):
-                question_seems_answerable = True
-        
-        if question_seems_answerable:
-            # Simulate a query for this question
-            # In a real scenario, an LLM would generate this query
-            # Using the primary_table_for_simulation and its first column for simplicity
-            first_column_name = simulated_schema_columns[0] if simulated_schema_columns else "unknown_column"
-            simulated_query = f"SELECT * FROM {primary_table_for_simulation} WHERE {first_column_name} CONTAINS '{q_text[:20]}...'" # Example query
-            
-            print(f"RetrieveDataAgent: Attempting simulated query: {simulated_query} for question: {q_text}")
-            query_result = execute_sql_query(simulated_query)
-            
-            # Store the actual result from the BQ tool, which is a dict like {"result": [...]}
-            retrieved_data_for_all_questions.append({
-                "question": q_text,
-                "query_attempted": simulated_query,
-                "data": query_result.get("result", "No data from query")
-            })
-            any_question_answerable = True # Mark that at least one question could be addressed
+        current_question_data = {
+            "question": q_text,
+            "query_attempted": simulated_query,
+            "data": actual_data_from_query if actual_data_from_query else "No specific data found from simulation."
+        }
+        retrieved_data_for_all_questions.append(current_question_data)
+
+        if actual_data_from_query: # Check if the list is not empty
+            any_question_answered_with_data = True
+            print(f"DEBUG: retrieve_data_agent: Found data for question '{q_text}'")
         else:
-            retrieved_data_for_all_questions.append({
-                "question": q_text,
-                "query_attempted": None,
-                "data": f"Could not find relevant table/column for question in simulated environment: {q_text}"
-            })
+            print(f"DEBUG: retrieve_data_agent: No data found for question '{q_text}' from query '{simulated_query}'")
 
-    if any_question_answerable:
+
+    if any_question_answered_with_data:
+        print("DEBUG: retrieve_data_agent determined can_answer = True")
         return DataState(retrieved_data=retrieved_data_for_all_questions, can_answer=True)
     else:
-        return DataState(retrieved_data="No relevant data found for any question based on simulated table/column checks.", can_answer=False)
+        print("DEBUG: retrieve_data_agent determined can_answer = False")
+        return DataState(retrieved_data=retrieved_data_for_all_questions, can_answer=False)
+
 
 def generate_answer_agent(state: DataState) -> AnswerState:
     """
     Generates an answer based on the retrieved data.
-    Placeholder implementation.
+    Tries to incorporate some of the retrieved data into the answer.
     """
-    # For now, return a static answer
-    if state.can_answer:
-        return AnswerState(answer="The retrieved data suggests the answer is 42.")
+    print(f"DEBUG: generate_answer_agent received DataState with can_answer={state.can_answer}")
+    if state.can_answer and state.retrieved_data:
+        # Try to find the first piece of actual data to include
+        summary_parts = []
+        for item in state.retrieved_data:
+            if isinstance(item, dict) and item.get("data") and item["data"] != "No specific data found from simulation.":
+                # Take the first element of the data list if it's a list, or the data itself
+                first_data_point = item["data"]
+                if isinstance(first_data_point, list) and first_data_point:
+                    summary_parts.append(f"For '{item['question']}': {str(first_data_point[0])[:100]}...")
+                elif not isinstance(first_data_point, list):
+                     summary_parts.append(f"For '{item['question']}': {str(first_data_point)[:100]}...")
+        
+        if summary_parts:
+            answer = "Based on the retrieved data: " + " | ".join(summary_parts)
+        else:
+            answer = "I found some information, but couldn't summarize it clearly. The data has been retrieved."
+        
+        print(f"DEBUG: generate_answer_agent produced answer: {answer}")
+        return AnswerState(answer=answer)
     else:
-        return AnswerState(answer="I could not find enough information to answer the questions.")
+        final_answer = "I could not find enough specific information to answer the questions."
+        print(f"DEBUG: generate_answer_agent produced answer: {final_answer}")
+        return AnswerState(answer=final_answer)
 
 def cannot_answer_agent(state: DataState) -> AnswerState:
     """
     Generates a specific message when the agent cannot answer.
     """
-    # This agent is called when retrieve_data_agent sets can_answer to False
-    return AnswerState(answer="Sorry, I cannot answer the question with the available data.")
+    print("DEBUG: cannot_answer_agent was called.")
+    # The state.retrieved_data might contain info on why it couldn't answer
+    reason = "available data"
+    if state.retrieved_data and isinstance(state.retrieved_data, list):
+        # Check if all items report no specific data
+        all_no_data = True
+        for item_data in state.retrieved_data:
+            if isinstance(item_data, dict) and item_data.get("data") and item_data.get("data") != "No specific data found from simulation.":
+                all_no_data = False
+                break
+        if all_no_data:
+            reason = "simulated environment did not yield specific results for the queries"
+
+    final_answer = f"Sorry, I cannot answer the question with the {reason}."
+    print(f"DEBUG: cannot_answer_agent produced answer: {final_answer}")
+    return AnswerState(answer=final_answer)
