@@ -22,7 +22,7 @@ The system's codebase is organized into the following key Python files:
 
 -   `states.py`: Defines Pydantic models (`UserInputState`, `QuestionState`, `DataState`, `AnswerState`) that represent the structure of data as it flows through the system. These models ensure type safety and provide clear data contracts between agents.
 -   `agents.py`: Contains the Python functions that implement the logic for each of the agents described above. This is where the core processing for each step resides.
--   `bigquery_tools.py`: Provides placeholder functions that simulate interactions with Google BigQuery (e.g., `execute_sql_query`, `get_table_schema`, `list_tables`). These tools mimic the expected interface of actual BigQuery operations.
+-   `bigquery_tools.py`: Provides functions to directly interact with Google BigQuery. It uses the `google-cloud-bigquery` library to execute queries and relies on a local `mayo_structure_parsed.json` file for schema information to list tables and get table schemas. Key functions include `execute_sql_query(query: str)`, `get_table_schema(table_name: str)`, and `list_tables(dataset_id: str = None)`.
 -   `graph.py`: Defines the LangGraph workflow. This file includes:
     -   The overall state definition (`State` TypedDict) that the graph operates on.
     -   Instantiation of the `StateGraph`.
@@ -57,7 +57,11 @@ The system's codebase is organized into the following key Python files:
     ```
     This file includes `langgraph`, `pydantic`, and `requests` which are necessary for running the main agentic system and the LLM Connection Tester utility.
 
-*Note on BigQuery*: For actual BigQuery integration (which is currently placeholder-based), you will also need the `google-cloud-bigquery` library. This can be installed via `pip install google-cloud-bigquery` when you're ready to implement that functionality. This package is not included in `requirements.txt` by default to keep the initial setup lightweight for users who only want to explore the placeholder logic.
+*Note on BigQuery*: The `bigquery_tools.py` module now directly interacts with Google BigQuery. Therefore, the `google-cloud-bigquery` library is a required dependency for its core functionality. If not already listed, please add it to your `requirements.txt` or install it via:
+    ```bash
+    pip install google-cloud-bigquery
+    ```
+    Refer to Section 6 for more details on prerequisites for `bigquery_tools.py`.
 
 ## 4. How the System Works (LangGraph Flow)
 The LangGraph workflow orchestrates the interaction between the agents in a defined, stateful sequence:
@@ -148,24 +152,15 @@ The main goal of this utility is to ensure that your Python environment can succ
 
 -   **Placeholder Components**: It is crucial to understand that the current system relies heavily on placeholders for core functionality:
     -   **LLM Logic**: The agent functions within `agents.py` (specifically `generate_questions_agent` and `generate_answer_agent`) do not yet contain calls to Large Language Models (LLMs). Their current logic is hardcoded to return static values for simulation purposes.
-    -   **BigQuery Tools**: The functions in `bigquery_tools.py` only simulate BigQuery interactions. They print messages and return static, hardcoded data without actually connecting to or querying any database.
+    -   **BigQuery Tools**: The functions in `bigquery_tools.py` now connect to and query live BigQuery instances, using `mayo_structure_parsed.json` for schema metadata for some operations.
 
 -   **Integrating Real LLMs**:
     -   To make the agents intelligent and responsive to varied inputs, you will need to modify the respective agent functions in `agents.py`.
     -   For example, `generate_questions_agent` would need to use an LLM to parse the `user_input` string and generate a relevant list of questions. Similarly, `generate_answer_agent` would use an LLM to synthesize a coherent answer from the potentially complex `retrieved_data`.
     -   This typically involves using an LLM client library (such as LangChain's integrations with models from OpenAI, Anthropic, Google, etc.) to make API calls to the chosen language model.
 
--   **Integrating Real BigQuery**:
-    -   The placeholder functions in `bigquery_tools.py` (`execute_sql_query`, `get_table_schema`, `list_tables`) must be replaced with actual calls to the Google Cloud BigQuery API.
-    -   This involves:
-        -   Initializing the `google.cloud.bigquery.Client` typically at the beginning of your tool functions or in a shared context.
-        -   For `execute_sql_query`, you would replace the placeholder with code like `client.query(your_sql_query).to_dataframe()` or by iterating over the results using `client.query(your_sql_query).result()`.
-        -   For `get_table_schema`, you would use `client.get_table(table_id).schema`.
-        -   For `list_tables`, you would use `client.list_tables(dataset_id)`.
-    -   Proper authentication (e.g., using Application Default Credentials or service account keys) and robust error handling for API calls will be necessary.
-
 -   **Data Input**:
-    -   The original problem statement mentioned, "These data will be provided later." Integrating real BigQuery (as detailed above) will become critical once these actual data sources, table structures, and schemas are defined and accessible. This will allow the `retrieve_data_agent` to work with live, meaningful data, making the entire system fully functional and capable of answering real user queries.
+    -   The original problem statement mentioned, "These data will be provided later." The `bigquery_tools.py` module is now capable of working with live data. The crucial next step is ensuring that the actual BigQuery projects, datasets, and tables are populated with the relevant data and that the `mayo_structure_parsed.json` file accurately reflects their schemas. This will allow the `retrieve_data_agent` to work with live, meaningful data, making the entire system fully functional.
 
 ### Interoperability with A2A Protocol
 
@@ -176,3 +171,99 @@ The [Agent2Agent (A2A) Protocol](https://google.github.io/A2A/) (see also [Dante
 *   **Enhanced Modularity**: Adopting A2A can make the overall architecture more modular, allowing individual components (agents) to be developed, deployed, and scaled independently while maintaining standardized communication interfaces.
 
 For detailed information on how this system's components map to A2A concepts and how LLMs can interact with it in an A2A context, please refer to `LLM_DOCUMENTATION.md`.
+
+## 6. `bigquery_tools.py` - Detailed Functionality and Usage
+
+The `bigquery_tools.py` module is responsible for all direct interactions with Google BigQuery. It has been updated from a simulation to a live-querying tool.
+
+### Overview
+This module enables the agentic system to:
+- Execute arbitrary SQL queries against specified BigQuery projects and datasets.
+- Retrieve schema information for tables.
+- List available tables.
+
+### How it Works
+- **BigQuery Client**: It utilizes the official `google-cloud-bigquery` Python library to connect to and interact with Google BigQuery.
+- **Schema Cache**: For operations like `get_table_schema` and `list_tables`, it relies on a local JSON file named `mayo_structure_parsed.json`. This file is expected to contain the schema definitions for the relevant BigQuery projects, datasets, and tables. This approach minimizes direct `INFORMATION_SCHEMA` queries for metadata, making these operations faster and potentially reducing costs. The tool includes a helper function (`_get_mayodb_schema`) to load and cache this JSON file.
+- **Error Handling**: Functions are designed to return a dictionary with an "error" key if an issue occurs (e.g., query failure, table not found in JSON).
+
+### Detailed Functionality
+
+#### `execute_sql_query(query: str) -> Dict[str, Any]`
+-   **Purpose**: Executes a given SQL query string against the configured BigQuery project.
+-   **Parameters**:
+    -   `query (str)`: The SQL query to execute.
+-   **Returns**: A dictionary containing:
+    -   `{"result": [dict(row) for row in results]}` on success.
+    -   `{"error": str(e), "result": []}` on failure.
+
+#### `get_table_schema(table_name: str) -> Dict[str, Any]`
+-   **Purpose**: Retrieves the schema for a specified table using `mayo_structure_parsed.json`.
+-   **Parameters**:
+    -   `table_name (str)`: The name of the table. It can be fully qualified (e.g., `dataset_id.table_name`) or, in some cases, an unqualified table name if the internal search logic can resolve it (this may print a warning if ambiguous).
+-   **Returns**: A dictionary:
+    -   `{"schema": {"column1": "TYPE1", "column2": "TYPE2", ...}}` on success.
+    -   `{"schema": {}, "error": "Error message"}` if the table is not found or the JSON cannot be loaded.
+
+#### `list_tables(dataset_id: str = None) -> Dict[str, List[str]]`
+-   **Purpose**: Lists tables, using `mayo_structure_parsed.json` as the source.
+-   **Parameters**:
+    -   `dataset_id (str, optional)`: If provided, lists tables only from this dataset (table names returned without prefix). If `None`, lists all tables from all projects/datasets in the JSON in the format `dataset_id.table_name`.
+-   **Returns**: A dictionary:
+    -   `{"tables": ["table1", "table2", ...]}` on success.
+    -   `{"tables": [], "error": "Error message"}` if the JSON cannot be loaded.
+
+### Prerequisites for Usage
+For `bigquery_tools.py` to function correctly with live BigQuery:
+
+1.  **Google Cloud Authentication**: Ensure you are authenticated. The common method is Application Default Credentials (ADC):
+    ```bash
+    gcloud auth application-default login
+    ```
+    Alternatively, ensure the `GOOGLE_APPLICATION_CREDENTIALS` environment variable is set if using a service account key.
+2.  **Project Configuration**: Your Google Cloud project must be correctly configured in your environment, as the BigQuery client will use the default project if not specified in the code.
+3.  **IAM Permissions**: The authenticated principal (user or service account) must have the necessary IAM permissions for BigQuery (e.g., `BigQuery Data Viewer` for reading data, `BigQuery Metadata Viewer` for schemas if direct lookups were used, and `BigQuery Job User` to run queries).
+4.  **`mayo_structure_parsed.json`**:
+    *   This file **must** be present in the same directory as `bigquery_tools.py`, or the path in `_get_mayodb_schema()` within `bigquery_tools.py` must be updated to its correct location.
+    *   It should contain the schema definitions for the target BigQuery datasets and tables.
+5.  **Python Library**: The `google-cloud-bigquery` library must be installed:
+    ```bash
+    pip install google-cloud-bigquery
+    ```
+
+### Example Usage Snippets
+
+```python
+from bigquery_tools import execute_sql_query, get_table_schema, list_tables
+
+# Example: Execute a SQL query
+# Replace with your actual project, dataset, and table names.
+query = "SELECT column_name FROM `your_project_id.your_dataset_id.your_table_name` LIMIT 5"
+result = execute_sql_query(query)
+if "error" in result:
+    print(f"Query Error: {result['error']}")
+else:
+    print(f"Query Result: {result['result']}")
+
+# Example: Get table schema
+# Assumes 'your_dataset_id.your_table_name' is defined in mayo_structure_parsed.json
+schema_info = get_table_schema("your_dataset_id.your_table_name")
+if "error" in schema_info:
+    print(f"Schema Error: {schema_info['error']}")
+else:
+    print(f"Schema: {schema_info['schema']}")
+
+# Example: List all tables (from mayo_structure_parsed.json)
+all_tables_info = list_tables()
+if "error" in all_tables_info:
+    print(f"List Tables Error: {all_tables_info['error']}")
+else:
+    print(f"All known tables: {all_tables_info['tables']}")
+
+# Example: List tables for a specific dataset (from mayo_structure_parsed.json)
+dataset_tables_info = list_tables(dataset_id="your_dataset_id")
+if "error" in dataset_tables_info:
+    print(f"List Tables Error: {dataset_tables_info['error']}")
+else:
+    print(f"Tables in your_dataset_id: {dataset_tables_info['tables']}")
+```
