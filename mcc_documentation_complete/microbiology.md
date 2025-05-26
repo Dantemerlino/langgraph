@@ -1,0 +1,67 @@
+# Microbiology Tests Data Mart
+
+## Description
+
+Tests for micro-organisms and the results.
+
+## Diagram
+
+[![Microbiology Data Model](/assets/images/fact_microbiology-e3dc23d0f10ff4bfb5dbba03f0eecb19.PNG)](https://mctools.sharepoint.com/:b:/r/teams/UDPDAIS/Shared%20Documents/UDP%20Data%20Mart%20Documents/Z_S2T_Model_for_Website/Data%20Models/20%29%20Microbiology/FACT_MICRO_MCC.pdf)
+
+## Dataset Information
+
+- **Project Id:** `ml-mps-adl-intudp-phi-p-d5cb`
+- **Dataset:** `phi_udpwh_etl_us_p`
+- **Entitlement:** `MCC Live - AIDE UDP General Marts PROD Analytics`
+  - [User Access](/docs/data-analytics/user-access) | [Service Account Access](/docs/data-analytics/service-account-access)
+
+**Former DB2 Database:** EDT4P
+**Update Frequency:** Updated Nightly
+**Support Group:** UDP Data Integration
+
+## Mapping Specifications
+
+Not available
+
+## Example Query
+
+### Fact Table Indexed Columns
+
+**Note:** Subject to changes. Please use the following column(s) in your query filter for faster and more efficient data retrieval.
+
+- `PATIENT_DK`
+- `MICROBIOLOGY_COLLECTION_DTM`
+- `MICROBIOLOGY_TEST_DK`
+- `MICROBIOLOGY_TEST_FPK`
+
+### Sample Query: 
+
+This is a sample query to get you started. Query you need for your use case may be different than this sample.
+```sql
+SELECT PT.PATIENT_CLINIC_NUMBER,
+  MICPROV.PROVIDER_FIRST_NAME, MICPROV.PROVIDER_MIDDLE_NAME,
+  MICLOC.LOCATION_CODE, MICLOC.LOCATION_DESCRIPTION,
+  SRC.SOURCE_SYSTEM_NAME,
+  MICTST.MICROBIOLOGY_TEST_TYPE, MICTST.MICROBIOLOGY_TEST_CODE, MICTST.MICROBIOLOGY_TEST_NAME,
+  MICOGRN.MICROBIOLOGY_ORGANISM_CODE, MICOGRN.MICROBIOLOGY_ORGANISM_NAME,
+  MICANT.ANATOMIC_LOCATION_CODE, MICANT.ANATOMIC_LOCATION_DESCRIPTION,
+  MT.MICROBIOLOGY_COLLECTION_DTM, MT.MICROBIOLOGY_MODIFIED_DTM, MT.MICROBIOLOGY_RESULT_DTM, MT.MICROBIOLOGY_ACCESSION_NUMBER, MT.MICROBIOLOGY_ORDER_NUMBER,
+  MT.MICROBIOLOGY_CONTRIBUTOR_SYSTEM, MT.MICROBIOLOGY_TEST_SUSCEPTIBILITY_RESULT_TEXT, MT.MICROBIOLOGY_TEST_COMMENT,
+  MT.MICROBIOLOGY_TEST_STATUS, MT.MICROBIOLOGY_TEST_FINAL_FLAG_INDICATOR, MT.MICROBIOLOGY_TEST_RESULT_TEXT
+FROM EDTWH.FACT_MICROBIOLOGY_TEST MT
+  JOIN EDTWH.DIM_PATIENT PT
+    ON (MT.PATIENT_DK = PT.PATIENT_DK)
+  JOIN EDTWH.DIM_HEALTHCARE_PROVIDER MICPROV
+    ON (MT.PROVIDER_DK = MICPROV.PROVIDER_DK)
+  JOIN EDTWH.DIM_LOCATION MICLOC
+    ON (MT.LOCATION_DK = MICLOC.LOCATION_DK)
+  JOIN EDTWH.DIM_SOURCE_SYSTEM SRC
+    ON (MT.SOURCE_SYSTEM_DK = SRC.SOURCE_SYSTEM_DK)
+  JOIN EDTWH.DIM_ANATOMIC_LOCATION MICANT
+    ON (MT.ANATOMIC_LOCATION_DK = MICANT.ANATOMIC_LOCATION_DK)
+  JOIN EDTWH.DIM_MICROBIOLOGY_TEST_NAME MICTST
+    ON (MT.MICROBIOLOGY_TEST_DK = MICTST.MICROBIOLOGY_TEST_DK)
+  JOIN EDTWH.DIM_MICROBIOLOGY_ORGANISM MICOGRN
+    ON (MT.MICROBIOLOGY_ORGANISM_DK = MICOGRN.MICROBIOLOGY_ORGANISM_DK)
+WHERE MT.MICROBIOLOGY_COLLECTION_DTM BETWEEN '2015-06-01 00:00:00' AND '2015-06-30 23:59:59'
+```
